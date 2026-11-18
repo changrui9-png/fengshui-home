@@ -1,0 +1,14 @@
+node_modules/
+dist/
+dist-server/
+.env
+.env.*
+!.env.example
+*.mp4
+*.mov
+*.webm
+uploads/
+coverage/
+.DS_Store
+*.local
+user-data/

@@ -1,0 +1,14 @@
+{
+  "video": "example-not-a-real-home.mp4",
+  "scale_method": "camera height given: 1.5 m",
+  "room": {
+    "rect_m": [0, 0, 4.2, 3.1],
+    "rectangular": true,
+    "incomplete": false,
+    "length_m": 4.2,
+    "width_m": 3.1,
+    "area_m2": 13.02
+  },
+  "confidence": { "label": "medium", "score": 60 },
+  "warnings": ["这是随仓库附上的示例夹具，不是某套住宅的测量。scene.json 没有罗盘。"]
+}
