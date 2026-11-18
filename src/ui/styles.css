@@ -1,0 +1,78 @@
+:root {
+  color-scheme: light;
+  --paper: #f3eee4;
+  --card: #fffdf8;
+  --ink: #1f1a17;
+  --muted: #5c534c;
+  --line: #ddd2c2;
+  --cinnabar: #8f2d2d;
+  --pine: #1f4d3a;
+  --gold: #8a6a32;
+  --focus: #1f4d3a;
+  font-family: "WenQuanYi Micro Hei", "Noto Sans CJK SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  line-height: 1.55;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { min-height: 44px; padding: 0.45rem 0.8rem; border: 1px solid var(--line); background: var(--card); border-radius: 8px; cursor: pointer; }
+button.primary { background: var(--pine); color: white; border-color: var(--pine); }
+button.danger { border-color: var(--cinnabar); color: var(--cinnabar); }
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+a { color: var(--pine); }
+.skip { position: absolute; left: -999px; }
+.skip:focus { left: 8px; top: 8px; background: white; z-index: 2; padding: 8px; }
+
+.shell { max-width: 1180px; margin: 0 auto; padding: 1rem; }
+header.top { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-end; flex-wrap: wrap; }
+header.top h1 { font-size: 1.7rem; margin: 0; letter-spacing: 0.04em; }
+header.top p { margin: 0.2rem 0 0; color: var(--muted); max-width: 46rem; }
+nav.steps { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 1rem 0; }
+nav.steps button[aria-current="step"] { border-color: var(--cinnabar); color: var(--cinnabar); background: #fff7f4; }
+
+.banner { border-left: 4px solid var(--gold); background: #fff8e8; padding: 0.7rem 0.9rem; margin: 0.6rem 0; }
+.banner.warn { border-color: var(--cinnabar); background: #fff4f1; }
+.banner.ok { border-color: var(--pine); background: #f1f7f3; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 1rem; align-items: start; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 0.9rem; }
+.card h2 { margin: 0 0 0.5rem; font-size: 1.15rem; }
+.grid-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+label.field { display: flex; flex-direction: column; gap: 0.25rem; margin: 0.45rem 0; font-size: 0.95rem; }
+textarea, input[type="text"], input[type="number"], select { min-height: 44px; border: 1px solid var(--line); border-radius: 8px; padding: 0.4rem 0.55rem; background: white; }
+textarea { min-height: 8rem; }
+.plan-wrap { overflow: auto; background: white; border: 1px solid var(--line); border-radius: 12px; }
+.plan-wrap svg { width: 100%; height: auto; display: block; touch-action: none; }
+.questions { display: flex; flex-direction: column; gap: 0.55rem; }
+.questions article { border-top: 1px solid var(--line); padding-top: 0.45rem; }
+.tag { display: inline-block; border: 1px solid var(--line); border-radius: 999px; padding: 0.05rem 0.45rem; font-size: 0.8rem; color: var(--muted); }
+.rule { border-top: 1px solid var(--line); padding: 0.8rem 0; }
+.rule h3 { margin: 0.2rem 0; font-size: 1.05rem; }
+.status { font-weight: 700; }
+.status.evaluated { color: var(--pine); }
+.status.withheld, .status.insufficient-evidence { color: var(--cinnabar); }
+.frames { display: flex; gap: 0.4rem; overflow: auto; }
+.frames img { width: 140px; height: 90px; object-fit: cover; border-radius: 6px; background: #eee; }
+.small { color: var(--muted); font-size: 0.92rem; }
+.check { display: flex; gap: 0.5rem; align-items: flex-start; margin: 0.4rem 0; }
+.check input { width: 1.2rem; height: 1.2rem; margin-top: 0.2rem; }
+
+@media (max-width: 860px) {
+  .layout { grid-template-columns: 1fr; }
+  header.top h1 { font-size: 1.4rem; }
+}
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; }
+  .shell { max-width: none; }
+  .card { border: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { scroll-behavior: auto; }
+}
