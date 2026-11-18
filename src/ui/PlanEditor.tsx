@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { placeElevatorOutside } from "../domain/project";
 import { uid } from "../domain/ids";
+import { applyGesture, balconyOnWall, isHandle, placePreset, ROOM_PRESETS, type EditGesture, type Handle } from "../domain/planEdit";
 import type { FurnishingKind, Project, RoomUsage, WallSide } from "../domain/types";
 import { FURNITURE_LABEL, USAGE_LABEL, WALL_LABEL } from "../domain/types";
-import { renderPlanSvg } from "./planSvg";
+import { computePlanFrame, renderPlanSvg, type PlanFrame } from "./planSvg";
 
 const USAGES = Object.keys(USAGE_LABEL) as RoomUsage[];
 const KINDS = Object.keys(FURNITURE_LABEL) as FurnishingKind[];
@@ -11,21 +12,27 @@ const WALLS = Object.keys(WALL_LABEL) as WallSide[];
 
 export function PlanEditor({ project, setProject }: { project: Project; setProject: (project: Project) => void }) {
   const [selected, setSelected] = useState<string | null>(project.rooms[0]?.id ?? null);
+  const [balconyWall, setBalconyWall] = useState<WallSide>("south");
+  const [frameLock, setFrameLock] = useState<PlanFrame | null>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const gesture = useRef<{ start: Project; originX: number; originY: number; frame: PlanFrame; edit: DragTarget } | null>(null);
   const room = project.rooms.find((item) => item.id === selected);
   const furnishing = project.furnishings.find((item) => item.id === selected);
   const opening = project.openings.find((item) => item.id === selected);
+  const frame = frameLock ?? computePlanFrame(project);
 
-  function addRoom() {
-    const id = uid("room");
-    const offset = project.rooms.length * 0.4;
-    setProject({
-      ...project,
-      rooms: [
-        ...project.rooms,
-        { id, name: "新房间", usage: "other", x: offset, y: offset, widthM: 3, heightM: 3, rotationDeg: 0 },
-      ],
-    });
-    setSelected(id);
+  function addNamedRoom(name: string) {
+    const created = placePreset(project, name);
+    setProject({ ...project, rooms: [...project.rooms, created] });
+    setSelected(created.id);
+  }
+
+  function addBalcony() {
+    const host = room ?? project.rooms[0];
+    if (!host) return;
+    const created = balconyOnWall(host, balconyWall);
+    setProject({ ...project, rooms: [...project.rooms, created] });
+    setSelected(created.id);
   }
 
   function addOpening(kind: "door" | "window") {
@@ -65,13 +72,61 @@ export function PlanEditor({ project, setProject }: { project: Project; setProje
     setSelected(null);
   }
 
+  function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    const target = event.target as Element;
+    const handleNode = target.closest?.("[data-handle]");
+    const id = (handleNode ?? target.closest?.("[data-id]"))?.getAttribute("data-id");
+    if (!id) return;
+    const svg = canvasRef.current?.querySelector("svg");
+    if (!(svg instanceof SVGSVGElement)) return;
+    const world = clientToWorld(svg, event.clientX, event.clientY, frame);
+    const handle = handleNode?.getAttribute("data-handle") ?? "";
+    const drag = gestureKind(project, id, handle);
+    if (!drag) return;
+    gesture.current = { start: project, originX: world.x, originY: world.y, frame, edit: drag };
+    setFrameLock(frame);
+    setSelected(id);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function onPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    const current = gesture.current;
+    if (!current) return;
+    const svg = canvasRef.current?.querySelector("svg");
+    if (!(svg instanceof SVGSVGElement)) return;
+    const world = clientToWorld(svg, event.clientX, event.clientY, current.frame);
+    const dx = world.x - current.originX;
+    const dy = world.y - current.originY;
+    setProject(applyGesture(current.start, gestureFromDrag(current.edit, dx, dy, current.start)));
+  }
+
+  function endGesture() {
+    gesture.current = null;
+    setFrameLock(null);
+  }
+
   return (
     <div className="layout">
       <div>
-        <div className="grid-actions no-print" style={{ marginBottom: "0.5rem" }}>
-          <button type="button" onClick={addRoom}>添加房间</button>
-          <button type="button" onClick={() => addOpening("door")}>添加门</button>
-          <button type="button" onClick={() => addOpening("window")}>添加窗</button>
+        <p className="small">手绘可以代替视频。从空白平面点选房间名称，拖动图形，拉动圆点改变大小。名称会跟着房间一起移动。</p>
+        <div className="grid-actions no-print" aria-label="房间">
+          {ROOM_PRESETS.filter((preset) => preset.name !== "厕所").map((preset) => (
+            <button key={preset.name} type="button" onClick={() => addNamedRoom(preset.name)}>{preset.name}</button>
+          ))}
+        </div>
+        <div className="grid-actions no-print" aria-label="构件" style={{ margin: "0.45rem 0" }}>
+          <button type="button" onClick={() => addOpening("door")}>门</button>
+          <button type="button" onClick={() => addOpening("window")}>窗</button>
+          <label className="field" style={{ margin: 0 }}>
+            阳台靠
+            <select aria-label="阳台所靠的墙" value={balconyWall} onChange={(event) => setBalconyWall(event.target.value as WallSide)}>
+              {WALLS.map((wall) => (
+                <option key={wall} value={wall}>{WALL_LABEL[wall]}</option>
+              ))}
+            </select>
+          </label>
+          <button type="button" onClick={addBalcony}>阳台</button>
+          <button type="button" onClick={() => addNamedRoom("厕所")}>厕所</button>
           <button type="button" onClick={removeSelected} className="danger">删除选中</button>
           <button type="button" onClick={() => setProject(placeElevatorOutside(project))}>把电梯放到套外</button>
         </div>
@@ -84,12 +139,13 @@ export function PlanEditor({ project, setProject }: { project: Project; setProje
         </div>
         <div
           className="plan-wrap"
-          onClick={(event) => {
-            const id = (event.target as Element).closest?.("[data-id]")?.getAttribute("data-id");
-            if (id) setSelected(id);
-          }}
+          ref={canvasRef}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endGesture}
+          onPointerCancel={endGesture}
         >
-          <div dangerouslySetInnerHTML={{ __html: renderPlanSvg(project, selected) }} />
+          <div dangerouslySetInnerHTML={{ __html: renderPlanSvg(project, selected, frame) }} />
         </div>
       </div>
       <aside className="card">
@@ -173,12 +229,16 @@ export function PlanEditor({ project, setProject }: { project: Project; setProje
             <h3>{FURNITURE_LABEL[furnishing.kind]}</h3>
             {numberRow("横坐标 x", furnishing.x, (x) => updateItem(project, setProject, furnishing.id, { x }))}
             {numberRow("纵坐标 y", furnishing.y, (y) => updateItem(project, setProject, furnishing.id, { y }))}
+            {numberRow("宽", furnishing.widthM, (widthM) => updateItem(project, setProject, furnishing.id, { widthM }))}
+            {numberRow("深", furnishing.depthM, (depthM) => updateItem(project, setProject, furnishing.id, { depthM }))}
             {numberRow("旋转", furnishing.rotationDeg, (rotationDeg) => updateItem(project, setProject, furnishing.id, { rotationDeg }))}
           </>
         ) : null}
         {opening ? (
           <>
             <h3>{opening.kind === "door" ? "门" : "窗"}</h3>
+            {numberRow("宽度", opening.widthM, (widthM) => updateOpening(project, setProject, opening.id, { widthM }))}
+            {numberRow("沿墙位置", opening.offset, (offset) => updateOpening(project, setProject, opening.id, { offset }))}
             <label className="field">
               所在墙
               <select value={opening.wall} onChange={(event) => updateOpening(project, setProject, opening.id, { wall: event.target.value as WallSide })}>
@@ -270,6 +330,47 @@ export function PlanEditor({ project, setProject }: { project: Project; setProje
       </aside>
     </div>
   );
+}
+
+function clientToWorld(svg: SVGSVGElement, clientX: number, clientY: number, plan: PlanFrame): { x: number; y: number } {
+  const point = svg.createSVGPoint();
+  point.x = clientX;
+  point.y = clientY;
+  const matrix = svg.getScreenCTM();
+  if (!matrix) return { x: 0, y: 0 };
+  const local = point.matrixTransform(matrix.inverse());
+  return { x: plan.minX + local.x / plan.scale, y: plan.maxY - local.y / plan.scale };
+}
+
+type DragTarget =
+  | { kind: "move-room" | "move-furnishing"; id: string }
+  | { kind: "resize-room" | "resize-furnishing"; id: string; handle: Handle }
+  | { kind: "move-opening" | "resize-opening"; id: string }
+  | { kind: "move-elevator" };
+
+function gestureFromDrag(edit: DragTarget, dx: number, dy: number, project: Project): EditGesture {
+  if (edit.kind === "move-opening" || edit.kind === "resize-opening") {
+    const source = project.openings.find((item) => item.id === edit.id);
+    const along = source && (source.wall === "east" || source.wall === "west") ? dy : dx;
+    return { kind: edit.kind, id: edit.id, deltaAlong: along };
+  }
+  if (edit.kind === "move-elevator") return { kind: "move-elevator", dx, dy };
+  if (edit.kind === "resize-room" || edit.kind === "resize-furnishing") return { kind: edit.kind, id: edit.id, handle: edit.handle, dx, dy };
+  return { kind: edit.kind, id: edit.id, dx, dy };
+}
+
+function gestureKind(project: Project, id: string, handle: string): DragTarget | null {
+  if (id === "elevator") return { kind: "move-elevator" };
+  const opening = project.openings.some((item) => item.id === id);
+  if (opening && handle === "width") return { kind: "resize-opening", id };
+  if (opening) return { kind: "move-opening", id };
+  const room = project.rooms.some((item) => item.id === id);
+  if (room && isHandle(handle)) return { kind: "resize-room", id, handle };
+  if (room) return { kind: "move-room", id };
+  const furnishing = project.furnishings.some((item) => item.id === id);
+  if (furnishing && isHandle(handle)) return { kind: "resize-furnishing", id, handle };
+  if (furnishing) return { kind: "move-furnishing", id };
+  return null;
 }
 
 function PendingClaimForm({

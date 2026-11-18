@@ -51,6 +51,10 @@ export function addEvidence(project: Project, item: Omit<EvidenceItem, "id">): E
 }
 
 const USAGE_BY_NAME: { name: string; usage: RoomUsage }[] = [
+  { name: "男主人房", usage: "bedroom" },
+  { name: "女主人房", usage: "bedroom" },
+  { name: "儿童房", usage: "bedroom" },
+  { name: "客房", usage: "bedroom" },
   { name: "卫生间", usage: "bath" },
   { name: "厕所", usage: "bath" },
   { name: "厨房", usage: "kitchen" },

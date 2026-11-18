@@ -123,15 +123,16 @@ export function MaterialsPanel({
     <div className="layout">
       <section className="card">
         <h2>准备材料</h2>
-        <p>从入户开始连续走到每个房间，不要跳着拍。至少在一个房间里，面对窗户向外，说出房间名称，以及「向外是南」或罗盘方位角。</p>
+        <p className="banner ok">没有视频也可以。打开「户型」，用男主人房、女主人房、门、窗、阳台和厕所在空白平面上拼出住宅。视频只是另一条可选途径。</p>
+        <p>如果拍摄：从入户开始连续走到每个房间，不要跳着拍。至少在一个房间里，面对窗户向外，说出房间名称，以及「向外是南」或罗盘方位角。</p>
         <p className="small">只说一个房间的方向，不能确定其他房间在哪里。需要连续走访和相邻关系，或者一张你确认过的平面。不要拍摄证件、屏幕和邻居。</p>
         <blockquote className="banner">
           示例旁白，不是你的家：从入户进来，门朝北。往南走进客厅。我站在主卧，面对东边窗户向外，方位角 90 度。电梯在入户外面东侧，机房不清楚。
         </blockquote>
         <div className="grid-actions">
-          <button className="primary" type="button" onClick={() => setProject(exampleProject())}>载入完整示例</button>
+          <button className="primary" type="button" onClick={() => setProject(createProject())}>从空白平面开始</button>
+          <button type="button" onClick={() => setProject(exampleProject())}>载入完整示例</button>
           <button type="button" onClick={() => setProject(incompleteExample())}>载入信息不完整的示例</button>
-          <button type="button" onClick={() => setProject(createProject())}>从空白开始</button>
         </div>
         <label className="field">
           旁白或文字说明

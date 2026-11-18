@@ -44,6 +44,22 @@ describe("界面", () => {
     expect(screen.getByText(/是否靠近电梯/)).toBeInTheDocument();
     expect(screen.getByText(/电梯门朝/)).toBeInTheDocument();
 
+    await user.click(screen.getByRole("button", { name: "材料" }));
+    await user.click(screen.getByRole("button", { name: "从空白平面开始" }));
+    await user.click(screen.getByRole("button", { name: "户型" }));
+    await user.click(screen.getByRole("button", { name: "男主人房" }));
+    expect(screen.getByDisplayValue("男主人房")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "女主人房" }));
+    expect(screen.getByDisplayValue("女主人房")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "门" }));
+    expect(screen.getByRole("heading", { name: "门" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "窗" }));
+    expect(screen.getByRole("heading", { name: "窗" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "阳台" }));
+    expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue("阳台");
+    await user.click(screen.getByRole("button", { name: "厕所" }));
+    expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue("厕所");
+
     await user.click(screen.getByRole("button", { name: "导出" }));
     expect(screen.getByRole("button", { name: "下载 JSON" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "下载 SVG" })).toBeInTheDocument();

@@ -1,13 +1,18 @@
 import { elevatorOverlapsHome } from "../domain/elevator";
-import { FURNITURE_LABEL, type Furnishing, type Project } from "../domain/types";
+import { openingSegment } from "../domain/planEdit";
+import { FURNITURE_LABEL, type Furnishing, type Project, type WallSide } from "../domain/types";
 
-const SCALE = 42;
+export const PLAN_SCALE = 42;
 
-function escapeXml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[char] ?? char);
+export interface PlanFrame {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  scale: number;
 }
 
-export function renderPlanSvg(project: Project, selectedId: string | null = null): string {
+export function computePlanFrame(project: Project): PlanFrame {
   const boxes = [
     ...project.rooms.map((room) => ({ x: room.x, y: room.y, w: room.widthM, h: room.heightM })),
     { x: project.elevator.x, y: project.elevator.y, w: project.elevator.widthM, h: project.elevator.depthM },
@@ -30,14 +35,20 @@ export function renderPlanSvg(project: Project, selectedId: string | null = null
     maxX = 8;
     maxY = 6;
   }
-  minX -= 1;
-  minY -= 1;
-  maxX += 1.6;
-  maxY += 1.4;
-  const width = (maxX - minX) * SCALE;
-  const height = (maxY - minY) * SCALE;
-  const sx = (x: number) => (x - minX) * SCALE;
-  const sy = (y: number) => (maxY - y) * SCALE;
+  return { minX: minX - 1, minY: minY - 1, maxX: maxX + 1.6, maxY: maxY + 1.4, scale: PLAN_SCALE };
+}
+
+function escapeXml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[char] ?? char);
+}
+
+export function renderPlanSvg(project: Project, selectedId: string | null = null, frame: PlanFrame = computePlanFrame(project)): string {
+  const { minX, minY, maxX, maxY } = frame;
+  const scale = frame.scale;
+  const width = (maxX - minX) * scale;
+  const height = (maxY - minY) * scale;
+  const sx = (x: number) => (x - minX) * scale;
+  const sy = (y: number) => (maxY - y) * scale;
 
   const grid: string[] = [];
   for (let x = Math.ceil(minX); x <= maxX; x += 1) {
@@ -58,24 +69,16 @@ export function renderPlanSvg(project: Project, selectedId: string | null = null
       const cx = sx(room.x + room.widthM / 2);
       const cy = sy(room.y + room.heightM / 2);
       const selected = selectedId === room.id;
-      return `<g transform="rotate(${room.rotationDeg} ${cx} ${cy})">
-        <rect data-id="${escapeXml(room.id)}" x="${sx(room.x)}" y="${sy(room.y + room.heightM)}" width="${room.widthM * SCALE}" height="${room.heightM * SCALE}" fill="${fillFor(room.usage)}" stroke="${selected ? "#8f2d2d" : "#2b241f"}" stroke-width="${selected ? 3 : 1.5}"/>
-        <text x="${cx}" y="${cy}" text-anchor="middle" font-size="15" fill="#1f1a17">${escapeXml(room.name)}</text>
+      const font = Math.max(12, Math.min(16, Math.min(room.widthM, room.heightM) * scale * 0.22));
+      return `<g data-id="${escapeXml(room.id)}" transform="rotate(${room.rotationDeg} ${cx} ${cy})">
+        <rect x="${sx(room.x)}" y="${sy(room.y + room.heightM)}" width="${room.widthM * scale}" height="${room.heightM * scale}" fill="${fillFor(room.usage)}" stroke="${selected ? "#8f2d2d" : "#2b241f"}" stroke-width="${selected ? 3 : 1.5}"/>
+        <text pointer-events="none" x="${cx}" y="${cy}" text-anchor="middle" font-size="${font}" fill="#1f1a17">${escapeXml(room.name)}</text>
       </g>`;
     })
     .join("");
 
   const openings = project.openings
-    .map((opening) => {
-      const room = project.rooms.find((item) => item.id === opening.roomId);
-      if (!room) return "";
-      const point = openingPoint(room, opening.wall, opening.offset);
-      const x = sx(point.x);
-      const y = sy(point.y);
-      const color = opening.kind === "window" ? "#2f6f9f" : "#8f2d2d";
-      const label = opening.isMainEntry ? "户门" : opening.kind === "window" ? "窗" : "门";
-      return `<g data-id="${escapeXml(opening.id)}"><circle cx="${x}" cy="${y}" r="5" fill="${color}"/><text x="${x + 8}" y="${y - 6}" font-size="11" fill="${color}">${label}</text></g>`;
-    })
+    .map((opening) => renderOpening(project, opening, selectedId, sx, sy))
     .join("");
 
   const furniture = project.furnishings
@@ -84,11 +87,12 @@ export function renderPlanSvg(project: Project, selectedId: string | null = null
       return `<g data-id="${escapeXml(item.id)}" transform="translate(${sx(item.x)} ${sy(item.y)}) rotate(${item.rotationDeg})">
         <title>${escapeXml(FURNITURE_LABEL[item.kind])}</title>
         ${symbol(item)}
-        ${selected ? `<rect x="${-item.widthM * SCALE * 0.5 - 4}" y="${-item.depthM * SCALE * 0.5 - 4}" width="${item.widthM * SCALE + 8}" height="${item.depthM * SCALE + 8}" fill="none" stroke="#8f2d2d" stroke-width="2"/>` : ""}
+        ${selected ? `<rect x="${-item.widthM * PLAN_SCALE * 0.5 - 4}" y="${-item.depthM * PLAN_SCALE * 0.5 - 4}" width="${item.widthM * PLAN_SCALE + 8}" height="${item.depthM * PLAN_SCALE + 8}" fill="none" stroke="#8f2d2d" stroke-width="2"/>` : ""}
       </g>`;
     })
     .join("");
 
+  const handles = renderHandles(project, selectedId, sx, sy);
   const compass = compassRose(width - 70, 70, project.plusYBearingDeg);
   const scaleLabel = project.scaleMode === "measured" ? "已声明为实测" : "示意图，不是实测";
 
@@ -99,8 +103,10 @@ export function renderPlanSvg(project: Project, selectedId: string | null = null
   ${rooms}
   ${openings}
   ${furniture}
-  ${compass}
-  <text x="16" y="${height - 16}" font-size="13" fill="#5c534c">${escapeXml(scaleLabel)}。向上的一边对应罗盘 ${project.plusYBearingDeg == null ? "尚未设定" : `${Math.round(project.plusYBearingDeg)}°`}。</text>
+  ${handles}
+  <g pointer-events="none">${compass}</g>
+  <text pointer-events="none" x="16" y="${height - 16}" font-size="13" fill="#5c534c">${escapeXml(scaleLabel)}。向上的一边对应罗盘 ${project.plusYBearingDeg == null ? "尚未设定" : `${Math.round(project.plusYBearingDeg)}°`}。</text>
+  ${project.rooms.length === 0 ? `<text pointer-events="none" x="${width / 2}" y="${height / 2}" text-anchor="middle" font-size="16" fill="#5c534c">空白平面。点选男主人房、女主人房、门、窗、阳台或厕所即可拼住宅，不必先有视频。</text>` : ""}
 </svg>`;
 }
 
@@ -116,28 +122,92 @@ function renderOutside(
   if (elevator.corridor) {
     const corridor = elevator.corridor;
     parts.push(
-      `<rect x="${sx(corridor.x)}" y="${sy(corridor.y + corridor.depthM)}" width="${corridor.widthM * SCALE}" height="${corridor.depthM * SCALE}" fill="none" stroke="${stroke}" stroke-dasharray="6 4" stroke-width="2"/>`,
-      `<text x="${sx(corridor.x + corridor.widthM / 2)}" y="${sy(corridor.y + corridor.depthM / 2)}" text-anchor="middle" font-size="12" fill="${stroke}">走廊·套外</text>`,
+      `<rect x="${sx(corridor.x)}" y="${sy(corridor.y + corridor.depthM)}" width="${corridor.widthM * PLAN_SCALE}" height="${corridor.depthM * PLAN_SCALE}" fill="none" stroke="${stroke}" stroke-dasharray="6 4" stroke-width="2"/>`,
+      `<text pointer-events="none" x="${sx(corridor.x + corridor.widthM / 2)}" y="${sy(corridor.y + corridor.depthM / 2)}" text-anchor="middle" font-size="12" fill="${stroke}">走廊·套外</text>`,
     );
   }
   parts.push(
-    `<rect data-id="elevator" x="${sx(elevator.x)}" y="${sy(elevator.y + elevator.depthM)}" width="${elevator.widthM * SCALE}" height="${elevator.depthM * SCALE}" fill="#e7f0ea" stroke="${stroke}" stroke-dasharray="5 3" stroke-width="2"/>`,
-    `<text x="${sx(elevator.x + elevator.widthM / 2)}" y="${sy(elevator.y + elevator.depthM / 2)}" text-anchor="middle" font-size="13" fill="${stroke}">电梯·套外</text>`,
+    `<g data-id="elevator"><rect x="${sx(elevator.x)}" y="${sy(elevator.y + elevator.depthM)}" width="${elevator.widthM * PLAN_SCALE}" height="${elevator.depthM * PLAN_SCALE}" fill="#e7f0ea" stroke="${stroke}" stroke-dasharray="5 3" stroke-width="2"/>`,
+    `<text pointer-events="none" x="${sx(elevator.x + elevator.widthM / 2)}" y="${sy(elevator.y + elevator.depthM / 2)}" text-anchor="middle" font-size="13" fill="${stroke}">电梯·套外</text></g>`,
   );
   return parts.join("");
 }
 
-function openingPoint(room: Project["rooms"][number], wall: Project["openings"][number]["wall"], offset: number): { x: number; y: number } {
+function renderOpening(
+  project: Project,
+  opening: Project["openings"][number],
+  selectedId: string | null,
+  sx: (x: number) => number,
+  sy: (y: number) => number,
+): string {
+  const room = project.rooms.find((item) => item.id === opening.roomId);
+  if (!room) return "";
+  const segment = openingSegment(room, opening);
+  const x1 = sx(segment.x1);
+  const y1 = sy(segment.y1);
+  const x2 = sx(segment.x2);
+  const y2 = sy(segment.y2);
+  const color = opening.kind === "window" ? "#2f6f9f" : "#8f2d2d";
+  const label = opening.isMainEntry ? "户门" : opening.kind === "window" ? "窗" : "门";
+  const inward = inwardScreen(opening.wall);
+  const length = Math.hypot(x2 - x1, y2 - y1);
+  const swing =
+    opening.kind === "door"
+      ? `<path d="M ${x1} ${y1} A ${length} ${length} 0 0 1 ${x1 + inward.x * length} ${y1 + inward.y * length}" fill="none" stroke="${color}" stroke-width="1.5"/>`
+      : `<line x1="${x1 + inward.x * 4}" y1="${y1 + inward.y * 4}" x2="${x2 + inward.x * 4}" y2="${y2 + inward.y * 4}" stroke="${color}" stroke-width="2"/>`;
+  const selected = selectedId === opening.id;
+  return `<g data-id="${escapeXml(opening.id)}" data-kind="${opening.kind}">
+    <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#fffdf8" stroke-width="12"/>
+    <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="transparent" stroke-width="18"/>
+    <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="4"/>
+    ${swing}
+    <text pointer-events="none" x="${(x1 + x2) / 2 + 8}" y="${(y1 + y2) / 2 - 8}" font-size="11" fill="${color}">${label}</text>
+    ${selected ? `<circle data-id="${escapeXml(opening.id)}" data-handle="width" cx="${sx(segment.handleX)}" cy="${sy(segment.handleY)}" r="8" fill="#fffdf8" stroke="${color}" stroke-width="2"/>` : ""}
+  </g>`;
+}
+
+function inwardScreen(wall: WallSide): { x: number; y: number } {
   switch (wall) {
     case "north":
-      return { x: room.x + offset * room.widthM, y: room.y + room.heightM };
+      return { x: 0, y: 1 };
     case "south":
-      return { x: room.x + offset * room.widthM, y: room.y };
+      return { x: 0, y: -1 };
     case "east":
-      return { x: room.x + room.widthM, y: room.y + offset * room.heightM };
+      return { x: -1, y: 0 };
     case "west":
-      return { x: room.x, y: room.y + offset * room.heightM };
+      return { x: 1, y: 0 };
   }
+}
+
+function renderHandles(project: Project, selectedId: string | null, sx: (x: number) => number, sy: (y: number) => number): string {
+  if (!selectedId) return "";
+  const room = project.rooms.find((item) => item.id === selectedId);
+  if (room) {
+    const points: [string, number, number][] = [
+      ["sw", room.x, room.y],
+      ["se", room.x + room.widthM, room.y],
+      ["nw", room.x, room.y + room.heightM],
+      ["ne", room.x + room.widthM, room.y + room.heightM],
+      ["w", room.x, room.y + room.heightM / 2],
+      ["e", room.x + room.widthM, room.y + room.heightM / 2],
+      ["s", room.x + room.widthM / 2, room.y],
+      ["n", room.x + room.widthM / 2, room.y + room.heightM],
+    ];
+    return points.map(([handle, x, y]) => handleDot(room.id, handle, sx(x), sy(y))).join("");
+  }
+  const item = project.furnishings.find((furnishing) => furnishing.id === selectedId);
+  if (!item) return "";
+  const points: [string, number, number][] = [
+    ["w", item.x - item.widthM / 2, item.y],
+    ["e", item.x + item.widthM / 2, item.y],
+    ["s", item.x, item.y - item.depthM / 2],
+    ["n", item.x, item.y + item.depthM / 2],
+  ];
+  return points.map(([handle, x, y]) => handleDot(item.id, handle, sx(x), sy(y))).join("");
+}
+
+function handleDot(id: string, handle: string, x: number, y: number): string {
+  return `<circle data-id="${escapeXml(id)}" data-handle="${handle}" cx="${x}" cy="${y}" r="8" fill="#fffdf8" stroke="#8f2d2d" stroke-width="2"/>`;
 }
 
 function fillFor(usage: Project["rooms"][number]["usage"]): string {
@@ -150,14 +220,16 @@ function fillFor(usage: Project["rooms"][number]["usage"]): string {
       return "#e3eef2";
     case "entry":
       return "#efe7da";
+    case "balcony":
+      return "#e5f2e4";
     default:
       return "#f7f1e6";
   }
 }
 
 function symbol(item: Furnishing): string {
-  const w = item.widthM * SCALE;
-  const d = item.depthM * SCALE;
+  const w = item.widthM * PLAN_SCALE;
+  const d = item.depthM * PLAN_SCALE;
   const body = `<rect x="${-w / 2}" y="${-d / 2}" width="${w}" height="${d}" fill="#fff" stroke="#2b241f" stroke-width="1.4"/>`;
   if (item.kind === "bed") {
     return `${body}<rect x="${-w / 2}" y="${d / 2 - 8}" width="${w}" height="8" fill="#8f2d2d"/>`;
